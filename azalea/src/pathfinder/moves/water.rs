@@ -30,18 +30,16 @@ pub fn classify_water(block_state: BlockState) -> Option<WaterType> {
             Some(_) => Some(WaterType::FlowingWater),
             None => Some(WaterType::StillWater), // Default to still if no level property
         }
+    } else if is_aquatic_plant(registry_block) {
+        // All aquatic plants (seagrass, kelp, sea pickles) are treated as still water
+        // Check this before waterlogged to ensure proper classification
+        Some(WaterType::StillWater)
     } else if block_state
         .property::<azalea_block::properties::Waterlogged>()
         .unwrap_or_default()
     {
         // Waterlogged blocks
         Some(WaterType::Waterlogged)
-    } else if registry_block == azalea_registry::Block::Seagrass 
-        || registry_block == azalea_registry::Block::TallSeagrass
-        || registry_block == azalea_registry::Block::Kelp
-        || registry_block == azalea_registry::Block::KelpPlant {
-        // Seagrass and similar water-containing blocks
-        Some(WaterType::StillWater)
     } else {
         None
     }
@@ -161,6 +159,17 @@ fn water_traverse_move(ctx: &mut PathfinderCtx, pos: RelBlockPos) {
             // TODO: Implement proper flow direction checking
             cost += FLOW_RESISTANCE_COST;
         }
+        
+        // Reduce cost for aquatic plants to encourage swimming through them
+        let target_block = ctx.world.get_block_state(target_pos);
+        if is_aquatic_plant(azalea_registry::Block::from(target_block)) {
+            cost *= 0.95; // Small preference for swimming through plants
+        }
+        
+        // Add directional bias to encourage straight-line swimming
+        // This helps prevent the zigzag/bobbing behavior
+        let direction_bonus = calculate_directional_bonus(pos, target_pos, offset);
+        cost += direction_bonus;
         
         // Reduce cost if we have good air access nearby
         if has_nearby_air_access(ctx, target_pos, 3) {
@@ -408,6 +417,16 @@ pub fn calculate_swimming_cost(
         base_cost += DROWNING_AVOIDANCE_COST;
     }
     
+    // Encourage straight-line movement by slightly reducing cost for direct paths
+    let dx = (target_pos.x - current_pos.x).abs();
+    let dz = (target_pos.z - current_pos.z).abs();
+    let dy = (target_pos.y - current_pos.y).abs();
+    
+    if dx <= 1 && dz <= 1 && dy <= 1 {
+        // This is a single-block move, apply straightness bonus
+        base_cost *= 0.98; // Small bonus for maintaining direction
+    }
+    
     base_cost
 }
 
@@ -480,4 +499,28 @@ fn execute_water_entry(mut ctx: ExecuteCtx) {
     
     ctx.look_at(center);
     ctx.walk(WalkDirection::Forward); // Walk into water
+}
+
+/// Check if a block is an aquatic plant that should be swimmable
+fn is_aquatic_plant(block: azalea_registry::Block) -> bool {
+    matches!(block,
+        azalea_registry::Block::Seagrass |
+        azalea_registry::Block::TallSeagrass |
+        azalea_registry::Block::Kelp |
+        azalea_registry::Block::KelpPlant |
+        azalea_registry::Block::SeaPickle
+    )
+}
+
+/// Calculate a directional bonus to encourage straight-line movement
+/// This helps prevent zigzag patterns and bobbing behavior
+fn calculate_directional_bonus(_current_pos: RelBlockPos, _target_pos: RelBlockPos, offset: RelBlockPos) -> f32 {
+    // Prefer cardinal directions over diagonal movement for straighter paths
+    let is_cardinal = offset.x == 0 || offset.z == 0;
+    
+    if is_cardinal {
+        0.0 // No penalty for cardinal directions
+    } else {
+        0.1 // Small penalty for diagonal movement to encourage straight lines
+    }
 }

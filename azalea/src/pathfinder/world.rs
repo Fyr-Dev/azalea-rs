@@ -14,6 +14,17 @@ use parking_lot::RwLock;
 
 use super::{mining::MiningCache, rel_block_pos::RelBlockPos};
 
+/// Check if a block is an aquatic plant that should be swimmable
+fn is_aquatic_plant(block: azalea_registry::Block) -> bool {
+    matches!(block,
+        azalea_registry::Block::Seagrass |
+        azalea_registry::Block::TallSeagrass |
+        azalea_registry::Block::Kelp |
+        azalea_registry::Block::KelpPlant |
+        azalea_registry::Block::SeaPickle
+    )
+}
+
 /// An efficient representation of the world used for the pathfinder.
 pub struct CachedWorld {
     /// The origin that the [`RelBlockPos`] types will be relative to. This is
@@ -639,8 +650,8 @@ pub fn is_block_state_passable(block: BlockState) -> bool {
     }
     // block.waterlogged currently doesn't account for seagrass and some other water
     // blocks - but now we want to allow movement through these
-    if block == azalea_registry::Block::Seagrass.into() {
-        return true; // Allow movement through seagrass in water
+    if is_aquatic_plant(registry_block) {
+        return true; // Allow movement through all aquatic plants in water
     }
 
     // don't walk into fire
