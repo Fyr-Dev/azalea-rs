@@ -20,14 +20,18 @@ pub const COST_HEURISTIC: f32 = 3.563;
 pub const BLOCK_BREAK_ADDITIONAL_PENALTY: f32 = 2.;
 
 // Water-related movement costs
-// Based on Baritone's water movement penalties and Minecraft's swimming mechanics
-pub const WATER_WALK_COST: f32 = WALK_ONE_BLOCK_COST * 1.3; // Slightly slower than normal walking
-pub const SWIMMING_COST: f32 = WALK_ONE_BLOCK_COST * 2.5; // Swimming is significantly slower
-pub const WATER_ASCENT_COST: f32 = SWIMMING_COST * 1.5; // Swimming upward requires more effort
-pub const WATER_DESCENT_COST: f32 = SWIMMING_COST * 0.8; // Swimming downward is easier
-pub const FLOW_RESISTANCE_COST: f32 = SWIMMING_COST * 0.3; // Additional cost when moving against current
-pub const WATER_ENTRY_COST: f32 = 5.0; // Cost to enter water from land
-pub const WATER_EXIT_COST: f32 = 3.0; // Cost to exit water to land
+// Based on Minecraft's actual swimming mechanics (1.97 m/s swimming vs 4.32 m/s sprinting)
+// Optimized for efficient water traversal rather than avoidance
+pub const WATER_WALK_COST: f32 = WALK_ONE_BLOCK_COST * 1.1; // Walking in shallow water
+pub const SWIMMING_COST: f32 = WALK_ONE_BLOCK_COST * 1.8; // Regular swimming (more realistic ratio)
+pub const WATER_ASCENT_COST: f32 = SWIMMING_COST * 1.3; // Swimming upward
+pub const WATER_DESCENT_COST: f32 = SWIMMING_COST * 0.9; // Swimming downward is easier
+pub const SPRINT_SWIMMING_COST: f32 = WALK_ONE_BLOCK_COST * 1.5; // Sprint swimming underwater
+pub const FLOW_RESISTANCE_COST: f32 = SWIMMING_COST * 0.2; // Reduced resistance penalty
+pub const WATER_ENTRY_COST: f32 = 2.0; // Lower entry cost to encourage water use
+pub const WATER_EXIT_COST: f32 = 1.5; // Lower exit cost
+pub const AIR_DEPLETION_PENALTY: f32 = 10.0; // Heavy penalty for running out of air
+pub const DROWNING_AVOIDANCE_COST: f32 = 50.0; // Very high cost to prevent drowning
 
 pub static FALL_1_25_BLOCKS_COST: LazyLock<f32> = LazyLock::new(|| distance_to_ticks(1.25));
 pub static FALL_0_25_BLOCKS_COST: LazyLock<f32> = LazyLock::new(|| distance_to_ticks(0.25));

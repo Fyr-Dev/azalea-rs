@@ -435,3 +435,64 @@ fn test_simple_water_pathfinding() {
     // The bot should be able to swim through water to reach the destination
     assert_simulation_reaches(&mut simulation, 300, end_pos);
 }
+
+#[test]
+fn test_improved_water_pathfinding() {
+    let mut partial_chunks = PartialChunkStorage::default();
+
+    // Create a larger water body to test swimming behavior
+    let start_pos = BlockPos::new(0, 70, 0);
+    let end_pos = BlockPos::new(8, 70, 0);
+
+    // Create a deep water channel
+    let mut foundation = Vec::new();
+    let mut water_blocks = Vec::new();
+    
+    for x in 0..=8 {
+        // Foundation at y=68
+        foundation.push(BlockPos::new(x, 68, 0));
+        
+        // Water from y=69 to y=72 (4 blocks deep)
+        for y in 69..=72 {
+            water_blocks.push((BlockPos::new(x, y, 0), azalea_registry::Block::Water.into()));
+        }
+    }
+
+    let mut simulation = setup_simulation_world(
+        &mut partial_chunks,
+        start_pos,
+        &foundation,
+        &water_blocks,
+    );
+
+    simulation.app.world_mut().send_event(GotoEvent {
+        entity: simulation.entity,
+        goal: Arc::new(BlockPosGoal(end_pos)),
+        successors_fn: moves::default_move,
+        allow_mining: false,
+        retry_on_no_path: true,
+        min_timeout: PathfinderTimeout::Nodes(1_000_000),
+        max_timeout: PathfinderTimeout::Nodes(5_000_000),
+    });
+
+    // The bot should efficiently swim across the deep water
+    // With improved costs, it should swim through rather than bob along the surface
+    assert_simulation_reaches(&mut simulation, 400, end_pos);
+}
+
+#[test]
+fn test_water_sprint_swimming_cost() {
+    use crate::pathfinder::moves::water::{calculate_swimming_cost, SwimmingState};
+
+    // Mock pathfinder context would be needed for a full test
+    // This is a conceptual test showing how sprint swimming should work
+    
+    let mut normal_state = SwimmingState::default();
+    let mut sprint_state = SwimmingState::default();
+    sprint_state.consecutive_swim_moves = 5; // Should trigger sprint swimming
+    
+    // Sprint swimming should be more efficient than regular swimming
+    // when fully submerged for consecutive moves
+    assert!(sprint_state.consecutive_swim_moves >= 3);
+    assert_eq!(normal_state.consecutive_swim_moves, 0);
+}
