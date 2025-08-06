@@ -19,6 +19,16 @@ pub const COST_HEURISTIC: f32 = 3.563;
 // breaking blocks if it can be avoided
 pub const BLOCK_BREAK_ADDITIONAL_PENALTY: f32 = 2.;
 
+// Water-related movement costs
+// Based on Baritone's water movement penalties and Minecraft's swimming mechanics
+pub const WATER_WALK_COST: f32 = WALK_ONE_BLOCK_COST * 1.3; // Slightly slower than normal walking
+pub const SWIMMING_COST: f32 = WALK_ONE_BLOCK_COST * 2.5; // Swimming is significantly slower
+pub const WATER_ASCENT_COST: f32 = SWIMMING_COST * 1.5; // Swimming upward requires more effort
+pub const WATER_DESCENT_COST: f32 = SWIMMING_COST * 0.8; // Swimming downward is easier
+pub const FLOW_RESISTANCE_COST: f32 = SWIMMING_COST * 0.3; // Additional cost when moving against current
+pub const WATER_ENTRY_COST: f32 = 5.0; // Cost to enter water from land
+pub const WATER_EXIT_COST: f32 = 3.0; // Cost to exit water to land
+
 pub static FALL_1_25_BLOCKS_COST: LazyLock<f32> = LazyLock::new(|| distance_to_ticks(1.25));
 pub static FALL_0_25_BLOCKS_COST: LazyLock<f32> = LazyLock::new(|| distance_to_ticks(0.25));
 pub static JUMP_ONE_BLOCK_COST: LazyLock<f32> =

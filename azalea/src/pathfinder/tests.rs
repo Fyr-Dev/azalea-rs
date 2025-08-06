@@ -308,3 +308,130 @@ fn test_mine_through_non_colliding_block() {
 
     assert_simulation_reaches(&mut simulation, 200, BlockPos::new(0, 70, 0));
 }
+
+// Water pathfinding tests
+#[test]
+fn test_water_classification() {
+    use crate::pathfinder::moves::water::{classify_water, WaterType};
+
+    // Test still water
+    let still_water = azalea_registry::Block::Water.into();
+    assert_eq!(classify_water(still_water), Some(WaterType::StillWater));
+
+    // Test air (not water)
+    let air = BlockState::AIR;
+    assert_eq!(classify_water(air), None);
+}
+
+#[test]
+fn test_water_passable() {
+    use super::world::CachedWorld;
+    use parking_lot::RwLock;
+
+    let mut partial_chunks = PartialChunkStorage::default();
+    let mut world = ChunkStorage::default();
+
+    // Set up a simple water area
+    partial_chunks.set(
+        &ChunkPos { x: 0, z: 0 },
+        Some(Chunk::default()),
+        &mut world,
+    );
+
+    // Place water blocks
+    partial_chunks.set_block_state(
+        BlockPos::new(0, 0, 0),
+        azalea_registry::Block::Water.into(),
+        &world,
+    );
+    partial_chunks.set_block_state(
+        BlockPos::new(0, 1, 0),
+        azalea_registry::Block::Water.into(),
+        &world,
+    );
+
+    let cached_world = CachedWorld::new(Arc::new(RwLock::new(world.into())), BlockPos::default());
+
+    // Water should now be passable using relative positions
+    assert!(cached_world.is_block_passable(super::rel_block_pos::RelBlockPos::new(0, 0, 0)));
+    assert!(cached_world.is_block_passable(super::rel_block_pos::RelBlockPos::new(0, 1, 0)));
+
+    // Should be able to move through water
+    assert!(cached_world.is_passable(super::rel_block_pos::RelBlockPos::new(0, 0, 0)));
+}
+
+#[test]
+fn test_water_standable() {
+    use super::world::CachedWorld;
+    use parking_lot::RwLock;
+
+    let mut partial_chunks = PartialChunkStorage::default();
+    let mut world = ChunkStorage::default();
+
+    // Set up water environment
+    partial_chunks.set(
+        &ChunkPos { x: 0, z: 0 },
+        Some(Chunk::default()),
+        &mut world,
+    );
+
+    // Place water with solid bottom
+    partial_chunks.set_block_state(
+        BlockPos::new(0, 0, 0),
+        azalea_registry::Block::Stone.into(),
+        &world,
+    );
+    partial_chunks.set_block_state(
+        BlockPos::new(0, 1, 0),
+        azalea_registry::Block::Water.into(),
+        &world,
+    );
+    partial_chunks.set_block_state(
+        BlockPos::new(0, 2, 0),
+        azalea_registry::Block::Water.into(),
+        &world,
+    );
+
+    let cached_world = CachedWorld::new(Arc::new(RwLock::new(world.into())), BlockPos::default());
+
+    // Should be able to "stand" (swim) in water
+    assert!(cached_world.is_standable(super::rel_block_pos::RelBlockPos::new(0, 1, 0)));
+    assert!(cached_world.is_standable(super::rel_block_pos::RelBlockPos::new(0, 2, 0)));
+}
+
+#[test]
+fn test_simple_water_pathfinding() {
+    let mut partial_chunks = PartialChunkStorage::default();
+
+    // Create a path through water
+    let start_pos = BlockPos::new(0, 70, 0);
+    let end_pos = BlockPos::new(3, 70, 0);
+
+    // Place stone foundation
+    let foundation: Vec<BlockPos> = (0..=3).map(|x| BlockPos::new(x, 69, 0)).collect();
+
+    // Create water blocks for the path
+    let water_blocks: Vec<(BlockPos, BlockState)> = (0..=3)
+        .map(|x| (BlockPos::new(x, 70, 0), azalea_registry::Block::Water.into()))
+        .collect();
+
+    let mut simulation = setup_simulation_world(
+        &mut partial_chunks,
+        start_pos,
+        &foundation,
+        &water_blocks,
+    );
+
+    simulation.app.world_mut().send_event(GotoEvent {
+        entity: simulation.entity,
+        goal: Arc::new(BlockPosGoal(end_pos)),
+        successors_fn: moves::default_move,
+        allow_mining: false,
+        retry_on_no_path: true,
+        min_timeout: PathfinderTimeout::Nodes(1_000_000),
+        max_timeout: PathfinderTimeout::Nodes(5_000_000),
+    });
+
+    // The bot should be able to swim through water to reach the destination
+    assert_simulation_reaches(&mut simulation, 300, end_pos);
+}

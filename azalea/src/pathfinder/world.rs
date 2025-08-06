@@ -252,7 +252,7 @@ impl CachedWorld {
         self.get_block_state_at_pos(pos.apply(self.origin))
     }
 
-    fn get_block_state_at_pos(&self, pos: BlockPos) -> BlockState {
+    pub fn get_block_state_at_pos(&self, pos: BlockPos) -> BlockState {
         let (section_pos, section_block_pos) =
             (ChunkSectionPos::from(pos), ChunkSectionBlockPos::from(pos));
         let index = u16::from(section_block_pos) as usize;
@@ -473,24 +473,119 @@ impl CachedWorld {
     }
 
     pub fn cost_for_passing(&self, pos: RelBlockPos, mining_cache: &MiningCache) -> f32 {
-        self.cost_for_breaking_block(pos, mining_cache)
-            + self.cost_for_breaking_block(pos.up(1), mining_cache)
+        let base_cost = self.cost_for_breaking_block(pos, mining_cache)
+            + self.cost_for_breaking_block(pos.up(1), mining_cache);
+        
+        // Add water traversal cost if moving through water
+        let water_cost = self.cost_for_water_movement(pos);
+        base_cost + water_cost
+    }
+    
+    /// Calculate additional cost for moving through water
+    pub fn cost_for_water_movement(&self, pos: RelBlockPos) -> f32 {
+        use crate::pathfinder::moves::water::{classify_water, WaterType};
+        
+        let block_pos = pos.apply(self.origin);
+        let current_block = self.get_block_state_at_pos(block_pos);
+        let above_block = self.get_block_state_at_pos(block_pos.up(1));
+        
+        // Check for dangerous adjacent blocks (simplified version)
+        let registry_current = azalea_registry::Block::from(current_block);
+        if registry_current == azalea_registry::Block::Lava {
+            return f32::INFINITY;
+        }
+        
+        // Calculate cost for current position and position above
+        let mut total_cost = 0.0;
+        
+        if let Some(water_type) = classify_water(current_block) {
+            match water_type {
+                WaterType::StillWater | WaterType::Waterlogged => {
+                    total_cost += super::costs::SWIMMING_COST;
+                },
+                WaterType::FlowingWater => {
+                    total_cost += super::costs::SWIMMING_COST + super::costs::FLOW_RESISTANCE_COST;
+                },
+                WaterType::Dangerous => return f32::INFINITY,
+            }
+        }
+        
+        if let Some(water_type) = classify_water(above_block) {
+            match water_type {
+                WaterType::StillWater | WaterType::Waterlogged => {
+                    total_cost += super::costs::SWIMMING_COST * 0.5; // Less cost for head space
+                },
+                WaterType::FlowingWater => {
+                    total_cost += super::costs::SWIMMING_COST * 0.5 + super::costs::FLOW_RESISTANCE_COST * 0.5;
+                },
+                WaterType::Dangerous => return f32::INFINITY,
+            }
+        }
+        
+        total_cost
     }
 
     /// Whether we can stand in this position. Checks if the block below is
-    /// solid, and that the two blocks above that are passable.
+    /// solid, and that the two blocks above that are passable. Also handles
+    /// water-specific movement types.
     pub fn is_standable(&self, pos: RelBlockPos) -> bool {
         self.is_standable_at_block_pos(pos.apply(self.origin))
     }
     fn is_standable_at_block_pos(&self, pos: BlockPos) -> bool {
-        self.is_block_pos_standable(pos.down(1)) && self.is_passable_at_block_pos(pos)
+        use crate::pathfinder::moves::water::{classify_water, WaterType};
+        
+        // Check if current position is in water
+        let current_block = self.get_block_state_at_pos(pos);
+        let water_type = classify_water(current_block);
+        
+        match water_type {
+            Some(WaterType::StillWater) | Some(WaterType::Waterlogged) => {
+                // Can move through navigable water - just need the space to be passable
+                self.is_passable_at_block_pos(pos)
+            },
+            Some(WaterType::FlowingWater) => {
+                // Flowing water is harder to navigate but still possible
+                self.is_passable_at_block_pos(pos)
+            },
+            Some(WaterType::Dangerous) => {
+                // Never stand in dangerous water
+                false
+            },
+            None => {
+                // Standard land-based standable check
+                self.is_block_pos_standable(pos.down(1)) && self.is_passable_at_block_pos(pos)
+            }
+        }
     }
 
     pub fn cost_for_standing(&self, pos: RelBlockPos, mining_cache: &MiningCache) -> f32 {
-        if !self.is_block_standable(pos.down(1)) {
-            return f32::INFINITY;
+        use crate::pathfinder::moves::water::{classify_water, WaterType};
+        
+        let block_pos = pos.apply(self.origin);
+        let current_block = self.get_block_state_at_pos(block_pos);
+        let water_type = classify_water(current_block);
+        
+        match water_type {
+            Some(WaterType::StillWater) | Some(WaterType::Waterlogged) => {
+                // Swimming - just need passable space
+                self.cost_for_passing(pos, mining_cache)
+            },
+            Some(WaterType::FlowingWater) => {
+                // Flowing water is more expensive but possible
+                self.cost_for_passing(pos, mining_cache)
+            },
+            Some(WaterType::Dangerous) => {
+                // Never stand in dangerous water
+                f32::INFINITY
+            },
+            None => {
+                // Standard land movement
+                if !self.is_block_standable(pos.down(1)) {
+                    return f32::INFINITY;
+                }
+                self.cost_for_passing(pos, mining_cache)
+            }
         }
-        self.cost_for_passing(pos, mining_cache)
     }
 
     /// Get the amount of air blocks until the next solid block below this one.
@@ -526,22 +621,26 @@ pub fn is_block_state_passable(block: BlockState) -> bool {
         return false;
     }
     let registry_block = azalea_registry::Block::from(block);
+    
+    // Allow water traversal - this is the key change for water pathfinding
     if registry_block == azalea_registry::Block::Water {
-        return false;
+        return true;
     }
+    
     if block
         .property::<azalea_block::properties::Waterlogged>()
         .unwrap_or_default()
     {
-        return false;
+        // Allow waterlogged blocks to be passable for water traversal
+        return true;
     }
     if registry_block == azalea_registry::Block::Lava {
         return false;
     }
     // block.waterlogged currently doesn't account for seagrass and some other water
-    // blocks
+    // blocks - but now we want to allow movement through these
     if block == azalea_registry::Block::Seagrass.into() {
-        return false;
+        return true; // Allow movement through seagrass in water
     }
 
     // don't walk into fire

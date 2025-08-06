@@ -1,5 +1,6 @@
 pub mod basic;
 pub mod parkour;
+pub mod water;
 
 use std::{
     fmt::{self, Debug},
@@ -33,6 +34,7 @@ pub type SuccessorsFn = fn(&mut PathfinderCtx, RelBlockPos);
 pub fn default_move(ctx: &mut PathfinderCtx, node: RelBlockPos) {
     basic::basic_move(ctx, node);
     parkour::parkour_move(ctx, node);
+    water::water_moves(ctx, node);
 }
 
 #[derive(Clone)]
