@@ -9,11 +9,14 @@ pub mod debug;
 pub mod goals;
 mod goto_event;
 pub mod mining;
+pub mod mining_goals;
+pub mod mining_process;
+pub mod world_scanner;
 pub mod moves;
 pub mod rel_block_pos;
 pub mod simulation;
 #[cfg(test)]
-mod tests;
+mod test_enhanced_mining;
 pub mod world;
 
 use std::{
@@ -1065,6 +1068,7 @@ pub fn recalculate_near_end_of_path(
                             entity,
                             direction: WalkDirection::None,
                         });
+                        commands.entity(entity).remove::<ExecutingPath>();
                     }
                 }
             }
@@ -1262,3 +1266,4 @@ pub fn call_successors_fn(
     successors_fn(&mut ctx, pos);
     edges
 }
+                         
